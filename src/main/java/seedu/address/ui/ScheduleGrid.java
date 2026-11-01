@@ -12,6 +12,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.function.ToIntFunction;
+import java.util.logging.Logger;
 
 import javafx.geometry.Pos;
 import javafx.scene.control.Label;
@@ -19,13 +20,15 @@ import javafx.scene.layout.Pane;
 import javafx.scene.layout.Region;
 import javafx.scene.shape.Line;
 import javafx.scene.shape.Rectangle;
+import seedu.address.commons.core.LogsCenter;
 import seedu.address.model.person.Person;
 import seedu.address.model.schedule.ScheduledSession;
 
 /**
  * A weekly timetable with one row per day and time running left to right. Each session is a card that starts
- * and ends at its exact times. Overlapping sessions on the same day are stacked in extra lanes, which makes
- * that day's row taller.
+ * and ends at its exact times, except that a session shorter than an hour gets a one-hour card so its details
+ * stay readable. Overlapping cards on the same day are stacked in extra lanes, which makes that day's row taller.
+ * Details too long for one line wrap, and that day's row grows so every card shows in full.
  * The viewport shows five days and {@code VISIBLE_HOURS} hours; the rest is reached by scrolling.
  * The day labels and time header stay pinned to the viewport edges.
  */
@@ -36,6 +39,9 @@ class ScheduleGrid extends Pane {
     private static final int MIN_HOUR_WIDTH = 120;
     private static final int MIN_ROW_HEIGHT = 90;
     private static final int MINUTES_IN_HOUR = 60;
+    private static final int MINUTES_IN_DAY = 24 * MINUTES_IN_HOUR;
+    // Shorter sessions get a card this long, as narrower cards are too small to show their details.
+    private static final int MIN_CARD_MINUTES = 60;
     // Keeps content slightly smaller than the viewport so scrollbars do not flicker on and off.
     private static final int FIT_MARGIN = 2;
     private static final int DAYS = 7;
@@ -45,6 +51,7 @@ class ScheduleGrid extends Pane {
     private static final String BACKGROUND_COLOUR = "#2b2b2b";
     private static final String LINE_COLOUR = "#555555";
 
+    private final Logger logger = LogsCenter.getLogger(ScheduleGrid.class);
     private final List<Placement> placements = new ArrayList<>();
     private final List<Label> dayLabels = new ArrayList<>();
     private final List<Label> hourLabels = new ArrayList<>();
@@ -84,7 +91,7 @@ class ScheduleGrid extends Pane {
         return Math.max(MIN_HOUR_WIDTH, Math.floor((viewportWidth - AXIS_WIDTH) / visibleHours) - FIT_MARGIN);
     }
 
-    /** Returns the height of one lane in a day row. */
+    /** Returns the standard height of one lane in a day row. A day's lanes grow taller if a card needs more room. */
     double rowHeight() {
         return Math.max(MIN_ROW_HEIGHT, Math.floor((viewportHeight - HEADER_HEIGHT) / VISIBLE_DAYS) - FIT_MARGIN);
     }
@@ -111,7 +118,7 @@ class ScheduleGrid extends Pane {
         int maxEnd = VISIBLE_END_HOUR * MINUTES_IN_HOUR;
         for (ScheduledSession session : sessions) {
             minStart = Math.min(minStart, startMinutes(session));
-            maxEnd = Math.max(maxEnd, endMinutes(session));
+            maxEnd = Math.max(maxEnd, cardEndMinutes(session));
         }
         rangeStartHour = minStart / MINUTES_IN_HOUR;
         rangeEndHour = (maxEnd + MINUTES_IN_HOUR - 1) / MINUTES_IN_HOUR;
@@ -165,6 +172,17 @@ class ScheduleGrid extends Pane {
         return end.getHour() * MINUTES_IN_HOUR + end.getMinute();
     }
 
+    /**
+     * Returns where the card of {@code session} ends, in minutes since midnight. A session shorter than
+     * {@code MIN_CARD_MINUTES} gets a longer card so its details fit, but no card runs past midnight.
+     */
+    private static int cardEndMinutes(ScheduledSession session) {
+        int start = startMinutes(session);
+        int cardEnd = Math.min(MINUTES_IN_DAY, Math.max(endMinutes(session), start + MIN_CARD_MINUTES));
+        assert cardEnd > start : "A card must end after it starts";
+        return cardEnd;
+    }
+
     /** Assigns each session in a day to a lane so that overlapping cards never share a lane. */
     private void placeDay(int dayIndex, List<ScheduledSession> daySessions, Function<Person, String> colourOf,
             Function<Person, String> titleOf, ToIntFunction<ScheduledSession> numberOf) {
@@ -173,7 +191,10 @@ class ScheduleGrid extends Pane {
 
         for (ScheduledSession session : daySessions) {
             int start = startMinutes(session);
-            int end = endMinutes(session);
+            int end = cardEndMinutes(session);
+            if (end > endMinutes(session)) {
+                logger.fine("Lengthened the card of short session " + session.getSessionId() + " to fit its details");
+            }
             if (clusterEnd >= 0 && start >= clusterEnd) {
                 laneEnds = new ArrayList<>();
                 clusterEnd = -1;
@@ -203,10 +224,28 @@ class ScheduleGrid extends Pane {
         return AXIS_WIDTH + (minutes / 60.0 - rangeStartHour) * hourWidth();
     }
 
+    private double cardWidth(Placement placement) {
+        double width = xOf(placement.end) - xOf(placement.start);
+        assert width > 0 : "A card must have a positive width";
+        return width;
+    }
+
+    /** Returns the lane height of each day, raised above the standard height when a card needs more room. */
+    private double[] laneHeights() {
+        double[] laneHeights = new double[DAYS];
+        Arrays.fill(laneHeights, rowHeight());
+        for (Placement placement : placements) {
+            double cardHeight = Math.ceil(placement.card.prefHeight(cardWidth(placement)));
+            laneHeights[placement.dayIndex] = Math.max(laneHeights[placement.dayIndex], cardHeight);
+        }
+        return laneHeights;
+    }
+
     private double contentHeight() {
+        double[] laneHeights = laneHeights();
         double total = HEADER_HEIGHT;
-        for (int lanes : dayLanes) {
-            total += lanes * rowHeight();
+        for (int i = 0; i < DAYS; i++) {
+            total += dayLanes[i] * laneHeights[i];
         }
         return total;
     }
@@ -228,7 +267,7 @@ class ScheduleGrid extends Pane {
 
     @Override
     protected void layoutChildren() {
-        double rowHeight = rowHeight();
+        double[] laneHeights = laneHeights();
         double hourWidth = hourWidth();
         double right = AXIS_WIDTH + (rangeEndHour - rangeStartHour) * hourWidth;
         double bottom = contentHeight();
@@ -247,7 +286,7 @@ class ScheduleGrid extends Pane {
         double y = HEADER_HEIGHT;
         for (int i = 0; i < DAYS; i++) {
             rowTops[i] = y;
-            double height = dayLanes[i] * rowHeight;
+            double height = dayLanes[i] * laneHeights[i];
             dayLabels.get(i).resizeRelocate(offsetX, y, AXIS_WIDTH, height);
             Line line = dayLines.get(i);
             line.setStartX(0);
@@ -259,10 +298,11 @@ class ScheduleGrid extends Pane {
 
         for (Placement placement : placements) {
             double left = xOf(placement.start);
-            double width = xOf(placement.end) - left;
-            double top = rowTops[placement.dayIndex] + placement.lane * rowHeight;
-            placement.card.resizeRelocate(left, top, width, rowHeight);
-            placement.card.setClip(new Rectangle(width, rowHeight));
+            double width = cardWidth(placement);
+            double laneHeight = laneHeights[placement.dayIndex];
+            double top = rowTops[placement.dayIndex] + placement.lane * laneHeight;
+            placement.card.resizeRelocate(left, top, width, laneHeight);
+            placement.card.setClip(new Rectangle(width, laneHeight));
         }
         corner.resizeRelocate(offsetX, offsetY, AXIS_WIDTH, HEADER_HEIGHT);
     }

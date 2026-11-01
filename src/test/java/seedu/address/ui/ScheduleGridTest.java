@@ -12,10 +12,12 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import javafx.scene.Node;
+import javafx.scene.Scene;
 import javafx.scene.control.Label;
 import javafx.scene.layout.Region;
 import seedu.address.model.person.Person;
 import seedu.address.model.schedule.ScheduledSession;
+import seedu.address.testutil.PersonBuilder;
 import seedu.address.testutil.ScheduledSessionBuilder;
 
 public class ScheduleGridTest {
@@ -53,29 +55,51 @@ public class ScheduleGridTest {
     public void layout_cardsUseExactTimes() throws Exception {
         ScheduleGrid grid = layoutGrid(List.of(
                 session(ALICE, DayOfWeek.MONDAY, "10-00", "11-00"),
-                session(ALICE, DayOfWeek.TUESDAY, "10-20", "10-40"),
-                session(ALICE, DayOfWeek.WEDNESDAY, "12-00", "12-10"),
-                session(ALICE, DayOfWeek.THURSDAY, "12-00", "12-20")));
+                session(ALICE, DayOfWeek.TUESDAY, "10-20", "11-40"),
+                session(ALICE, DayOfWeek.WEDNESDAY, "12-00", "13-10"),
+                session(ALICE, DayOfWeek.THURSDAY, "12-00", "13-20")));
         List<Region> cards = cards(grid);
         double hourWidth = hourWidth(grid);
 
         // 10:20 starts a third of an hour after 10:00
         assertEquals(AXIS_WIDTH + hourWidth / 3, cards.get(1).getLayoutX(), 0.001);
-        assertEquals(hourWidth / 3, cards.get(1).getWidth(), 0.001);
-        // 12:10 and 12:20 end at different places
+        assertEquals(hourWidth * 4 / 3, cards.get(1).getWidth(), 0.001);
+        // 13:10 and 13:20 end at different places
         double endOfTen = cards.get(2).getLayoutX() + cards.get(2).getWidth();
         double endOfTwenty = cards.get(3).getLayoutX() + cards.get(3).getWidth();
         assertEquals(hourWidth / 6, endOfTwenty - endOfTen, 0.001);
     }
 
     @Test
-    public void layout_sessionsSharingAThirtyMinuteBlockWithoutOverlapShareALane() throws Exception {
-        ScheduleGrid grid = layoutGrid(List.of(
-                session(ALICE, DayOfWeek.MONDAY, "10-00", "10-10"),
-                session(BENSON, DayOfWeek.MONDAY, "10-20", "10-30")));
-        List<Region> cards = cards(grid);
+    public void layout_shortSession_isDrawnOneHourWideFromItsStart() throws Exception {
+        ScheduleGrid grid = layoutGrid(List.of(session(ALICE, DayOfWeek.SUNDAY, "10-00", "10-15")));
+        ScheduleSessionCard card = (ScheduleSessionCard) cards(grid).get(0);
 
-        assertEquals(cards.get(0).getLayoutY(), cards.get(1).getLayoutY(), 0.001);
+        assertEquals(AXIS_WIDTH, card.getLayoutX(), 0.001);
+        assertEquals(hourWidth(grid), card.getWidth(), 0.001);
+        // the card still shows the session's real times
+        assertEquals("10:00 - 10:15", ((Label) card.getChildren().get(4)).getText());
+    }
+
+    @Test
+    public void layout_shortSessionsCloseTogether_stackInsteadOfCovering() throws Exception {
+        ScheduleGrid grid = layoutGrid(List.of(
+                session(ALICE, DayOfWeek.MONDAY, "10-00", "10-15"),
+                session(BENSON, DayOfWeek.MONDAY, "10-15", "10-30")));
+        List<Region> cards = cards(grid);
+        double rowHeight = cards.get(0).getHeight();
+
+        assertEquals(cards.get(0).getLayoutY() + rowHeight, cards.get(1).getLayoutY(), 0.001);
+    }
+
+    @Test
+    public void layout_shortSessionAtEndOfDay_stopsAtMidnight() throws Exception {
+        ScheduleGrid grid = layoutGrid(List.of(session(ALICE, DayOfWeek.MONDAY, "23-30", "23-45")));
+        Region card = cards(grid).get(0);
+
+        assertEquals(grid.prefWidth(-1), card.getLayoutX() + card.getWidth(), 0.001);
+        assertEquals("2400", labels(grid).stream().filter(l -> l.getText().length() == 4)
+                .reduce((first, second) -> second).orElseThrow().getText());
     }
 
     @Test
@@ -91,6 +115,31 @@ public class ScheduleGridTest {
         assertEquals(cards.get(0).getLayoutY() + rowHeight, cards.get(1).getLayoutY(), 0.001);
         // Tuesday starts below both Monday lanes
         assertEquals(HEADER_HEIGHT + 2 * rowHeight, cards.get(2).getLayoutY(), 0.001);
+    }
+
+    @Test
+    public void layout_longDetails_dayRowGrowsToFitTheWrappedCard() throws Exception {
+        Person longAddressStudent = new PersonBuilder(ALICE).withAddress("Blk 123 Tampines Street 45, #12-345, "
+                + "Next to the Tampines Hub Community Centre and the Tampines Mall, Opposite the Bus Interchange, "
+                + "Above the Coffee Shop on the Second Floor").build();
+        ScheduleGrid grid = FxTestSupport.runOnFxThread(() -> {
+            ScheduleGrid styledGrid = new ScheduleGrid();
+            new Scene(styledGrid);
+            styledGrid.setViewport(1500, 600);
+            styledGrid.setSessions(List.of(
+                    session(longAddressStudent, DayOfWeek.MONDAY, "10-00", "11-00"),
+                    session(BENSON, DayOfWeek.TUESDAY, "10-00", "11-00")),
+                    student -> "#f6a05a", student -> student.getName().fullName);
+            styledGrid.applyCss();
+            styledGrid.layout();
+            return styledGrid;
+        });
+        List<Region> cards = cards(grid);
+        Region monday = cards.get(0);
+
+        assertTrue(monday.getHeight() >= monday.prefHeight(monday.getWidth()));
+        assertTrue(monday.getHeight() > cards.get(1).getHeight());
+        assertEquals(HEADER_HEIGHT + monday.getHeight(), cards.get(1).getLayoutY(), 0.001);
     }
 
     @Test
