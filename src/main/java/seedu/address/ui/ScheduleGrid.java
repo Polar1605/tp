@@ -26,9 +26,9 @@ import seedu.address.model.schedule.ScheduledSession;
 
 /**
  * A weekly timetable with one row per day and time running left to right. Each session is a card that starts
- * and ends at its exact times, except that a session shorter than an hour gets a one-hour card so its details
- * stay readable. Overlapping cards on the same day are stacked in extra lanes, which makes that day's row taller.
- * Details too long for one line wrap, and that day's row grows so every card shows in full.
+ * and ends at its exact times, except that a session shorter than 30 minutes gets a 30-minute card so its
+ * details stay readable. Overlapping cards on the same day are stacked in extra lanes, which makes that day's
+ * row taller. Details too long for one line wrap, and that day's row grows so every card shows in full.
  * The viewport shows five days and {@code VISIBLE_HOURS} hours; the rest is reached by scrolling.
  * The day labels and time header stay pinned to the viewport edges.
  */
@@ -41,7 +41,7 @@ class ScheduleGrid extends Pane {
     private static final int MINUTES_IN_HOUR = 60;
     private static final int MINUTES_IN_DAY = 24 * MINUTES_IN_HOUR;
     // Shorter sessions get a card this long, as narrower cards are too small to show their details.
-    private static final int MIN_CARD_MINUTES = 60;
+    private static final int MIN_CARD_MINUTES = 30;
     // Keeps content slightly smaller than the viewport so scrollbars do not flicker on and off.
     private static final int FIT_MARGIN = 2;
     private static final int DAYS = 7;

@@ -71,12 +71,12 @@ public class ScheduleGridTest {
     }
 
     @Test
-    public void layout_shortSession_isDrawnOneHourWideFromItsStart() throws Exception {
+    public void layout_shortSession_isDrawnHalfAnHourWideFromItsStart() throws Exception {
         ScheduleGrid grid = layoutGrid(List.of(session(ALICE, DayOfWeek.SUNDAY, "10-00", "10-15")));
         ScheduleSessionCard card = (ScheduleSessionCard) cards(grid).get(0);
 
         assertEquals(AXIS_WIDTH, card.getLayoutX(), 0.001);
-        assertEquals(hourWidth(grid), card.getWidth(), 0.001);
+        assertEquals(hourWidth(grid) / 2, card.getWidth(), 0.001);
         // the card still shows the session's real times
         assertEquals("10:00 - 10:15", ((Label) card.getChildren().get(4)).getText());
     }
@@ -94,7 +94,7 @@ public class ScheduleGridTest {
 
     @Test
     public void layout_shortSessionAtEndOfDay_stopsAtMidnight() throws Exception {
-        ScheduleGrid grid = layoutGrid(List.of(session(ALICE, DayOfWeek.MONDAY, "23-30", "23-45")));
+        ScheduleGrid grid = layoutGrid(List.of(session(ALICE, DayOfWeek.MONDAY, "23-45", "23-50")));
         Region card = cards(grid).get(0);
 
         assertEquals(grid.prefWidth(-1), card.getLayoutX() + card.getWidth(), 0.001);

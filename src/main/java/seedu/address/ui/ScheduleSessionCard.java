@@ -11,7 +11,7 @@ import seedu.address.model.schedule.ScheduledSession;
 
 /**
  * A coloured card showing a scheduled student's name, subject, grade level and address,
- * with its time slot and displayed session number. {@link ScheduleGrid} makes every card at least an hour long
+ * with its time slot and displayed session number. {@link ScheduleGrid} makes every card at least 30 minutes long
  * so these details have room to show. Details too long for one line wrap onto the next.
  */
 class ScheduleSessionCard extends VBox {
